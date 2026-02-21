@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oda Kullanım Analizi | 房间使用分析</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;padding:20px}
+        .container{max-width:1400px;margin:0 auto;background:white;border-radius:24px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);overflow:hidden}
+        header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:40px;text-align:center}
+        header h1{margin:0;font-size:2em}
+        .subtitle{margin-top:10px;opacity:0.9}
+        .main-content{padding:40px}
+        .upload-area{border:3px dashed #cbd5e0;border-radius:20px;padding:60px;text-align:center;background:#f8f9ff;cursor:pointer;transition:all 0.3s;margin-bottom:30px}
+        .upload-area:hover,.upload-area.dragover{border-color:#667eea;background:#edf2f7;transform:translateY(-2px)}
+        .btn-primary{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border:none;padding:14px 32px;border-radius:30px;font-size:16px;font-weight:600;cursor:pointer;margin-top:20px;box-shadow:0 4px 15px rgba(102,126,234,0.4)}
+        .btn-primary:hover{transform:translateY(-2px)}
+        .btn-secondary{background:white;color:#667eea;border:2px solid #667eea;padding:10px 20px;border-radius:25px;font-size:14px;font-weight:600;cursor:pointer;margin:5px}
+        .btn-secondary:hover{background:#667eea;color:white}
+        .file-input{display:none}
+        .loading{display:none;text-align:center;padding:50px}
+        .spinner{width:50px;height:50px;border:5px solid #e2e8f0;border-top-color:#667eea;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .results{display:none}
+        .results.active{display:block;animation:fadeIn 0.5s}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;margin-bottom:30px}
+        .stat-card{background:white;padding:24px;border-radius:16px;box-shadow:0 4px 6px rgba(0,0,0,0.07);border-top:4px solid #667eea;text-align:center}
+        .stat-label{color:#718096;font-size:0.8em;font-weight:600;margin-bottom:8px}
+        .stat-value{font-size:2.2em;font-weight:800;color:#667eea}
+        .stat-unit{font-size:0.5em;color:#a0aec0}
+        .stat-detail{font-size:0.75em;color:#a0aec0;margin-top:5px}
+        .charts-section{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:30px}
+        .chart-box{background:white;padding:20px;border-radius:16px;box-shadow:0 4px 6px rgba(0,0,0,0.07)}
+        .chart-title{font-size:1.1em;font-weight:700;color:#2d3748;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid #e2e8f0}
+        .chart-container{position:relative;height:350px}
+        table{width:100%;border-collapse:collapse;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.07)}
+        th{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:14px;text-align:left;cursor:pointer;font-size:0.9em}
+        th:hover{opacity:0.9}
+        td{padding:12px 14px;border-bottom:1px solid #e2e8f0}
+        tr:hover{background:#f7fafc}
+        .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.8em;font-weight:600;background:#e6fffa;color:#234e52}
+        .progress-bar{width:100%;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden}
+        .progress-fill{height:100%;background:linear-gradient(90deg,#667eea 0%,#764ba2 100%)}
+        .actions{text-align:center;margin-top:30px;padding-top:20px;border-top:2px solid #e2e8f0}
+        .alert{padding:16px 20px;border-radius:12px;margin-bottom:20px;display:none;align-items:center;gap:10px}
+        .alert-success{background:#c6f6d5;color:#22543d;border:1px solid #9ae6b4}
+        .alert-error{background:#fed7d7;color:#c53030;border:1px solid #fc8181}
+        .hidden{display:none !important}
+        @media(max-width:968px){.charts-section{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏢 Oda Kullanım Analizi | 房间使用分析</h1>
+            <div class="subtitle">Excel dosyanızı yükleyin • 上传Excel文件进行分析</div>
+        </header>
+        
+        <div class="main-content">
+            <div id="alertBox" class="alert"></div>
+            
+            <div id="uploadSection">
+                <div class="upload-area" id="uploadArea">
+                    <div style="font-size:4em;margin-bottom:20px">📊</div>
+                    <h2>Excel Dosyanızı Sürükleyin veya Seçin</h2>
+                    <p style="color:#718096;margin:10px 0">拖拽或选择Excel文件</p>
+                    <p style="font-size:0.85em;color:#a0aec0">.xlsx, .xls, .csv</p>
+                    <button class="btn-primary" onclick="event.stopPropagation();document.getElementById('fileInput').click()">📁 Dosya Seç | 选择文件</button>
+                    <input type="file" id="fileInput" class="file-input" accept=".xlsx,.xls,.csv">
+                </div>
+            </div>
+
+            <div class="loading" id="loadingSection">
+                <div class="spinner"></div>
+                <h3>Analiz Ediliyor... | 正在分析...</h3>
+            </div>
+
+            <div class="results" id="resultsSection">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Benzersiz Oda | 独特房间数</div>
+                        <div class="stat-value" id="statUniqueRooms">0</div>
+                        <div class="stat-detail">Toplam: <span id="statTotalRecords">0</span> kayıt | 记录</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Toplam Süre | 总时长</div>
+                        <div class="stat-value"><span id="statTotalTime">0</span> <span class="stat-unit">dk | 分钟</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Ortalama/Oda | 平均/房间</div>
+                        <div class="stat-value"><span id="statAvgTime">0</span> <span class="stat-unit">dk | 分钟</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">En Çok Kullanılan | 使用最多</div>
+                        <div class="stat-value" id="statTopRoom" style="font-size:1.5em">-</div>
+                    </div>
+                </div>
+
+                <div class="charts-section">
+                    <div class="chart-box">
+                        <div class="chart-title">📊 Oda Kullanım Süreleri | 房间使用时长 (Top 15)</div>
+                        <div class="chart-container"><canvas id="barChart"></canvas></div>
+                    </div>
+                    <div class="chart-box">
+                        <div class="chart-title">🥧 Süre Dağılımı | 时长分布</div>
+                        <div class="chart-container"><canvas id="pieChart"></canvas></div>
+                    </div>
+                </div>
+
+                <div style="overflow-x:auto">
+                    <table id="dataTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable(0)">Sıra ↕ | 序号</th>
+                                <th onclick="sortTable(1)">Oda ID ↕ | 房间</th>
+                                <th onclick="sortTable(2)">Kullanıcı ID ↕ | 用户</th>
+                                <th onclick="sortTable(3)">Süre (dk) ↕ | 时长</th>
+                                <th onclick="sortTable(4)">Oran ↕ | 比例</th>
+                                <th>Ziyaret | 访问</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+
+                <div class="actions">
+                    <button class="btn-primary" onclick="exportExcel()">📥 Excel İndir | 下载</button>
+                    <button class="btn-secondary" onclick="window.print()">🖨️ Yazdır | 打印</button>
+                    <button class="btn-secondary" onclick="resetApp()">🔄 Yeni Analiz | 新分析</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Değişkenler
+        let analysisData=[],uniqueRooms=new Set(),barChart=null,pieChart=null;
+        let sortDir={};
+
+        // Event Listeners
+        document.getElementById('fileInput').addEventListener('change',handleFileSelect);
+        
+        // Drag & Drop
+        const uploadArea=document.getElementById('uploadArea');
+        ['dragenter','dragover','dragleave','drop'].forEach(e=>{
+            uploadArea.addEventListener(e,(ev)=>{ev.preventDefault();ev.stopPropagation();},false);
+        });
+        ['dragenter','dragover'].forEach(e=>uploadArea.addEventListener(e,()=>uploadArea.classList.add('dragover'),false));
+        ['dragleave','drop'].forEach(e=>uploadArea.addEventListener(e,()=>uploadArea.classList.remove('dragover'),false));
+        uploadArea.addEventListener('drop',(e)=>{if(e.dataTransfer.files.length)processFile(e.dataTransfer.files[0]);},false);
+        uploadArea.addEventListener('click',()=>document.getElementById('fileInput').click());
+
+        function handleFileSelect(e){if(e.target.files.length)processFile(e.target.files[0]);}
+
+        function processFile(file){
+            const valid=['.xlsx','.xls','.csv'],ext='.'+file.name.split('.').pop().toLowerCase();
+            if(!valid.includes(ext)){showAlert('Geçersiz dosya! | 无效文件！','error');return;}
+            
+            document.getElementById('uploadSection').classList.add('hidden');
+            document.getElementById('loadingSection').style.display='block';
+            
+            const reader=new FileReader();
+            reader.onload=(e)=>{
+                try{if(ext==='.csv')processCSV(e.target.result);else processExcel(e.target.result);}
+                catch(err){showAlert('Hata: '+err.message,'error');resetApp();}
+            };
+            ext==='.csv'?reader.readAsText(file):reader.readAsArrayBuffer(file);
+        }
+
+        function processCSV(data){
+            const lines=data.split('\n'),headers=lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
+            const json=[];
+            for(let i=1;i<lines.length;i++){
+                if(!lines[i].trim())continue;
+                const vals=lines[i].split(','),row={};
+                headers.forEach((h,idx)=>row[h]=vals[idx]?vals[idx].trim().replace(/"/g,''):'');
+                json.push(row);
+            }
+            analyze(json);
+        }
+
+        function processExcel(data){
+            const arr=new Uint8Array(data),workbook=XLSX.read(arr,{type:'array'});
+            analyze(XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]));
+        }
+
+        function fixDate(str){
+            if(typeof str!=='string')return str;
+            if(str.match(/^\d{2}\/\d{2}\/\d{4}/)){
+                const[p1,p2]=str.split(' '),[m,d,y]=p1.split('/');
+                return`${y}-${m}-${d} ${p2||'00:00:00'}`;
+            }
+            return str;
+        }
+
+        function analyze(data){
+            console.log('Örnek:',data[0]);
+            const stats={};uniqueRooms=new Set();let totalRec=0,errs=0;
+            
+            data.forEach(row=>{
+                try{
+                    const room=row['房间XID']||row['RoomID'],user=row['用户XID']||row['UserID'];
+                    let start=row['进房时间']||row['StartTime'],end=row['出房时间']||row['EndTime'];
+                    if(!room||!start||!end){errs++;return;}
+                    
+                    uniqueRooms.add(String(room));totalRec++;
+                    start=fixDate(start);end=fixDate(end);
+                    
+                    const s=new Date(start),e=new Date(end);
+                    if(isNaN(s)||isNaN(e)){errs++;return;}
+                    
+                    const dur=(e-s)/60000;
+                    const key=`${room}_${user}`;
+                    if(!stats[key])stats[key]={roomId:room,userId:user,total:0,visits:0};
+                    stats[key].total+=dur;stats[key].visits++;
+                }catch(e){errs++;}
+            });
+            
+            if(errs>0)console.warn(`${errs} satır atlandı`);
+            analysisData=Object.values(stats).sort((a,b)=>b.total-a.total);
+            
+            if(analysisData.length===0){
+                showAlert('Veri bulunamadı! Sütunları kontrol edin. | 未找到数据！请检查列名。','error');
+                resetApp();return;
+            }
+            showResults(totalRec);
+        }
+
+        function showResults(totalRec){
+            document.getElementById('loadingSection').style.display='none';
+            document.getElementById('resultsSection').classList.add('active');
+            
+            const totalTime=analysisData.reduce((s,i)=>s+i.total,0);
+            document.getElementById('statUniqueRooms').textContent=uniqueRooms.size;
+            document.getElementById('statTotalRecords').textContent=totalRec;
+            document.getElementById('statTotalTime').textContent=totalTime.toFixed(1);
+            document.getElementById('statAvgTime').textContent=(totalTime/uniqueRooms.size).toFixed(1);
+            document.getElementById('statTopRoom').textContent=analysisData[0].roomId;
+
+            setTimeout(()=>{drawCharts(totalTime);renderTable(totalTime);},100);
+            showAlert(`✓ Analiz tamamlandı! | 分析完成！ ${uniqueRooms.size} benzersiz oda | 个独特房间`,'success');
+        }
+
+        function drawCharts(totalTime){
+            const barCtx=document.getElementById('barChart').getContext('2d');
+            if(barChart)barChart.destroy();
+            barChart=new Chart(barCtx,{
+                type:'bar',
+                data:{labels:analysisData.slice(0,15).map(i=>'Oda '+i.roomId),datasets:[{label:'Dakika | 分钟',data:analysisData.slice(0,15).map(i=>i.total.toFixed(2)),backgroundColor:'rgba(102,126,234,0.8)',borderRadius:8}]},
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+' dakika | 分钟'}}},scales:{y:{beginAtZero:true,title:{display:true,text:'Dakika | 分钟'}}}}
+            });
+
+            const pieCtx=document.getElementById('pieChart').getContext('2d');
+            if(pieChart)pieChart.destroy();
+            const top5=analysisData.slice(0,5),others=analysisData.slice(5).reduce((s,i)=>s+i.total,0);
+            const pieData=[...top5];if(others>0)pieData.push({roomId:'Diğer | 其他',total:others});
+            
+            pieChart=new Chart(pieCtx,{
+                type:'doughnut',
+                data:{labels:pieData.map(i=>'Oda '+i.roomId),datasets:[{data:pieData.map(i=>i.total.toFixed(2)),backgroundColor:['#667eea','#764ba2','#f093fb','#f5576c','#4facfe','#00f2fe']}]},
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:11}}},tooltip:{callbacks:{label:(c)=>{const v=parseFloat(c.parsed),p=((v/totalTime)*100).toFixed(1);return`${v.toFixed(1)} dk | 分钟 (${p}%)`;}}}}}
+            });
+        }
+
+        function renderTable(totalTime){
+            const tbody=document.getElementById('tableBody');tbody.innerHTML='';
+            analysisData.forEach((item,idx)=>{
+                const pct=((item.total/totalTime)*100).toFixed(1);
+                tbody.insertRow().innerHTML=`<td><span class="badge">#${idx+1}</span></td><td><b>${item.roomId}</b></td><td>${item.userId}</td><td><b>${item.total.toFixed(2)}</b></td><td><div style="display:flex;align-items:center;gap:8px"><span style="font-size:0.85em;min-width:45px">${pct}%</span><div class="progress-bar" style="width:100px"><div class="progress-fill" style="width:${Math.min(pct,100)}%"></div></div></div></td><td>${item.visits} ziyaret | 次访问</td>`;
+            });
+        }
+
+        function sortTable(col){
+            const tbody=document.getElementById('tableBody'),rows=Array.from(tbody.querySelectorAll('tr'));
+            sortDir[col]=!sortDir[col];const dir=sortDir[col]?1:-1;
+            rows.sort((a,b)=>{
+                let av=a.cells[col].textContent.trim(),bv=b.cells[col].textContent.trim();
+                const an=parseFloat(av),bn=parseFloat(bv);
+                return(!isNaN(an)&&!isNaN(bn))?(an-bn)*dir:av.localeCompare(bv)*dir;
+            });
+            rows.forEach(r=>tbody.appendChild(r));
+        }
+
+        function exportExcel(){
+            const data=analysisData.map((i,idx)=>({'Sira | 序号':idx+1,'Oda_ID | 房间ID':i.roomId,'Kullanici_ID | 用户ID':i.userId,'Sure_dk | 时长(分钟)':i.total.toFixed(2),'Ziyaret | 访问次数':i.visits}));
+            const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb,ws,"Sonuclar | 结果");
+            XLSX.writeFile(wb,`oda_analiz_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showAlert('Excel indirildi! | Excel已下载！','success');
+        }
+
+        function showAlert(msg,type){
+            const a=document.getElementById('alertBox');
+            a.innerHTML=`<span>${msg}</span>`;a.className=`alert alert-${type}`;a.style.display='flex';
+            setTimeout(()=>a.style.display='none',5000);
+        }
+
+        function resetApp(){
+            document.getElementById('uploadSection').classList.remove('hidden');
+            document.getElementById('loadingSection').style.display='none';
+            document.getElementById('resultsSection').classList.remove('active');
+            document.getElementById('fileInput').value='';
+            analysisData=[];uniqueRooms=new Set();sortDir={};
+            if(barChart){barChart.destroy();barChart=null;}
+            if(pieChart){pieChart.destroy();pieChart=null;}
+        }
+    </script>
+</body>
+</html>
