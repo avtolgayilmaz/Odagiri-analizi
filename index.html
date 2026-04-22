@@ -50,8 +50,11 @@
         .alert-success{background:#c6f6d5;color:#22543d;border:1px solid #9ae6b4}
         .alert-error{background:#fed7d7;color:#c53030;border:1px solid #fc8181}
         .hidden{display:none !important}
+        .room-avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;margin-right:8px;vertical-align:middle;border:2px solid #e2e8f0}
+        .room-name-cell{display:flex;align-items:center}
         @media(max-width:968px){.charts-section{grid-template-columns:1fr}}
     </style>
+<base target="_blank">
 </head>
 <body>
     <div class="container">
@@ -59,10 +62,10 @@
             <h1>🏢 Oda Kullanım Analizi | 房间使用分析</h1>
             <div class="subtitle">Excel dosyanızı yükleyin • 上传Excel文件进行分析</div>
         </header>
-        
+
         <div class="main-content">
             <div id="alertBox" class="alert"></div>
-            
+
             <div id="uploadSection">
                 <div class="upload-area" id="uploadArea">
                     <div style="font-size:4em;margin-bottom:20px">📊</div>
@@ -116,7 +119,7 @@
                         <thead>
                             <tr>
                                 <th onclick="sortTable(0)">Sıra ↕ | 序号</th>
-                                <th onclick="sortTable(1)">Oda ID ↕ | 房间</th>
+                                <th onclick="sortTable(1)">Oda ↕ | 房间</th>
                                 <th onclick="sortTable(2)">Kullanıcı ID ↕ | 用户</th>
                                 <th onclick="sortTable(3)">Süre (dk) ↕ | 时长</th>
                                 <th onclick="sortTable(4)">Oran ↕ | 比例</th>
@@ -143,7 +146,7 @@
 
         // Event Listeners
         document.getElementById('fileInput').addEventListener('change',handleFileSelect);
-        
+
         // Drag & Drop
         const uploadArea=document.getElementById('uploadArea');
         ['dragenter','dragover','dragleave','drop'].forEach(e=>{
@@ -159,10 +162,10 @@
         function processFile(file){
             const valid=['.xlsx','.xls','.csv'],ext='.'+file.name.split('.').pop().toLowerCase();
             if(!valid.includes(ext)){showAlert('Geçersiz dosya! | 无效文件！','error');return;}
-            
+
             document.getElementById('uploadSection').classList.add('hidden');
             document.getElementById('loadingSection').style.display='block';
-            
+
             const reader=new FileReader();
             reader.onload=(e)=>{
                 try{if(ext==='.csv')processCSV(e.target.result);else processExcel(e.target.result);}
@@ -188,41 +191,91 @@
             analyze(XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]));
         }
 
-        function fixDate(str){
-            if(typeof str!=='string')return str;
-            if(str.match(/^\d{2}\/\d{2}\/\d{4}/)){
-                const[p1,p2]=str.split(' '),[m,d,y]=p1.split('/');
-                return`${y}-${m}-${d} ${p2||'00:00:00'}`;
+        // YENI FORMAT: MM/DD/YYYY HH:MM:SS -> Date objesi
+        function parseDate(str){
+            if(!str)return null;
+            if(str instanceof Date)return str;
+
+            // Excel serial number kontrolü
+            if(typeof str==='number'){
+                const epoch=new Date(1899,11,30);
+                return new Date(epoch.getTime()+str*86400000);
             }
-            return str;
+
+            const s=String(str).trim();
+
+            // MM/DD/YYYY HH:MM:SS formatı (yeni format)
+            const m1=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+            if(m1){
+                const [_,mm,dd,yyyy,hh,min,ss]=m1;
+                return new Date(parseInt(yyyy),parseInt(mm)-1,parseInt(dd),parseInt(hh),parseInt(min),parseInt(ss));
+            }
+
+            // YYYY-MM-DD HH:MM:SS formatı (eski format)
+            const m2=s.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+            if(m2){
+                const [_,yyyy,mm,dd,hh,min,ss]=m2;
+                return new Date(parseInt(yyyy),parseInt(mm)-1,parseInt(dd),parseInt(hh),parseInt(min),parseInt(ss));
+            }
+
+            // DD/MM/YYYY HH:MM:SS formatı
+            const m3=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+            if(m3){
+                const [_,dd,mm,yyyy,hh,min,ss]=m3;
+                return new Date(parseInt(yyyy),parseInt(mm)-1,parseInt(dd),parseInt(hh),parseInt(min),parseInt(ss));
+            }
+
+            // Genel Date parse dene
+            const d=new Date(s);
+            return isNaN(d)?null:d;
         }
 
         function analyze(data){
-            console.log('Örnek:',data[0]);
+            console.log('Örnek satır:',data[0]);
             const stats={};uniqueRooms=new Set();let totalRec=0,errs=0;
-            
-            data.forEach(row=>{
+
+            data.forEach((row,idx)=>{
                 try{
-                    const room=row['房间XID']||row['RoomID'],user=row['用户XID']||row['UserID'];
-                    let start=row['进房时间']||row['StartTime'],end=row['出房时间']||row['EndTime'];
-                    if(!room||!start||!end){errs++;return;}
-                    
-                    uniqueRooms.add(String(room));totalRec++;
-                    start=fixDate(start);end=fixDate(end);
-                    
-                    const s=new Date(start),e=new Date(end);
-                    if(isNaN(s)||isNaN(e)){errs++;return;}
-                    
+                    // YENI SUTUN ISIMLERI
+                    const roomId=row['房间XID'];
+                    const roomName=row['房间名称']||'';
+                    const roomAvatar=row['房间头像']||'';
+                    const userId=row['用户XID'];
+                    const userZid=row['用户ZID']||'';
+                    let start=row['上麦时间'];
+                    let end=row['下麦时间'];
+
+                    if(!roomId||!start||!end){errs++;return;}
+
+                    uniqueRooms.add(String(roomId));totalRec++;
+
+                    const s=parseDate(start);
+                    const e=parseDate(end);
+
+                    if(!s||!e||isNaN(s)||isNaN(e)){errs++;console.warn('Tarih hatası satır',idx,':',start,'->',end);return;}
+
                     const dur=(e-s)/60000;
-                    const key=`${room}_${user}`;
-                    if(!stats[key])stats[key]={roomId:room,userId:user,total:0,visits:0};
-                    stats[key].total+=dur;stats[key].visits++;
-                }catch(e){errs++;}
+                    if(dur<0){errs++;console.warn('Negatif süre satır',idx);return;}
+
+                    // Oda bazlı istatistik (userId yerine roomId bazlı gruplama)
+                    const key=`${roomId}`;
+                    if(!stats[key])stats[key]={
+                        roomId:roomId,
+                        roomName:roomName,
+                        roomAvatar:roomAvatar,
+                        total:0,
+                        visits:0,
+                        users:new Set()
+                    };
+                    stats[key].total+=dur;
+                    stats[key].visits++;
+                    stats[key].users.add(String(userId));
+                }catch(e){errs++;console.warn('Satır hatası',idx,e.message);}
             });
-            
+
             if(errs>0)console.warn(`${errs} satır atlandı`);
             analysisData=Object.values(stats).sort((a,b)=>b.total-a.total);
-            
+
             if(analysisData.length===0){
                 showAlert('Veri bulunamadı! Sütunları kontrol edin. | 未找到数据！请检查列名。','error');
                 resetApp();return;
@@ -233,13 +286,13 @@
         function showResults(totalRec){
             document.getElementById('loadingSection').style.display='none';
             document.getElementById('resultsSection').classList.add('active');
-            
+
             const totalTime=analysisData.reduce((s,i)=>s+i.total,0);
             document.getElementById('statUniqueRooms').textContent=uniqueRooms.size;
             document.getElementById('statTotalRecords').textContent=totalRec;
             document.getElementById('statTotalTime').textContent=totalTime.toFixed(1);
             document.getElementById('statAvgTime').textContent=(totalTime/uniqueRooms.size).toFixed(1);
-            document.getElementById('statTopRoom').textContent=analysisData[0].roomId;
+            document.getElementById('statTopRoom').textContent=analysisData[0].roomName||analysisData[0].roomId;
 
             setTimeout(()=>{drawCharts(totalTime);renderTable(totalTime);},100);
             showAlert(`✓ Analiz tamamlandı! | 分析完成！ ${uniqueRooms.size} benzersiz oda | 个独特房间`,'success');
@@ -250,18 +303,18 @@
             if(barChart)barChart.destroy();
             barChart=new Chart(barCtx,{
                 type:'bar',
-                data:{labels:analysisData.slice(0,15).map(i=>'Oda '+i.roomId),datasets:[{label:'Dakika | 分钟',data:analysisData.slice(0,15).map(i=>i.total.toFixed(2)),backgroundColor:'rgba(102,126,234,0.8)',borderRadius:8}]},
+                data:{labels:analysisData.slice(0,15).map(i=>i.roomName||('Oda '+i.roomId)),datasets:[{label:'Dakika | 分钟',data:analysisData.slice(0,15).map(i=>i.total.toFixed(2)),backgroundColor:'rgba(102,126,234,0.8)',borderRadius:8}]},
                 options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+' dakika | 分钟'}}},scales:{y:{beginAtZero:true,title:{display:true,text:'Dakika | 分钟'}}}}
             });
 
             const pieCtx=document.getElementById('pieChart').getContext('2d');
             if(pieChart)pieChart.destroy();
             const top5=analysisData.slice(0,5),others=analysisData.slice(5).reduce((s,i)=>s+i.total,0);
-            const pieData=[...top5];if(others>0)pieData.push({roomId:'Diğer | 其他',total:others});
-            
+            const pieData=[...top5];if(others>0)pieData.push({roomName:'Diğer | 其他',roomId:'other',total:others});
+
             pieChart=new Chart(pieCtx,{
                 type:'doughnut',
-                data:{labels:pieData.map(i=>'Oda '+i.roomId),datasets:[{data:pieData.map(i=>i.total.toFixed(2)),backgroundColor:['#667eea','#764ba2','#f093fb','#f5576c','#4facfe','#00f2fe']}]},
+                data:{labels:pieData.map(i=>i.roomName||('Oda '+i.roomId)),datasets:[{data:pieData.map(i=>i.total.toFixed(2)),backgroundColor:['#667eea','#764ba2','#f093fb','#f5576c','#4facfe','#00f2fe']}]},
                 options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:11}}},tooltip:{callbacks:{label:(c)=>{const v=parseFloat(c.parsed),p=((v/totalTime)*100).toFixed(1);return`${v.toFixed(1)} dk | 分钟 (${p}%)`;}}}}}
             });
         }
@@ -270,7 +323,10 @@
             const tbody=document.getElementById('tableBody');tbody.innerHTML='';
             analysisData.forEach((item,idx)=>{
                 const pct=((item.total/totalTime)*100).toFixed(1);
-                tbody.insertRow().innerHTML=`<td><span class="badge">#${idx+1}</span></td><td><b>${item.roomId}</b></td><td>${item.userId}</td><td><b>${item.total.toFixed(2)}</b></td><td><div style="display:flex;align-items:center;gap:8px"><span style="font-size:0.85em;min-width:45px">${pct}%</span><div class="progress-bar" style="width:100px"><div class="progress-fill" style="width:${Math.min(pct,100)}%"></div></div></div></td><td>${item.visits} ziyaret | 次访问</td>`;
+                const roomLabel=item.roomName?`${item.roomName}<br><small style="color:#a0aec0">ID:${item.roomId}</small>`:`<b>${item.roomId}</b>`;
+                const avatarHtml=item.roomAvatar?`<img src="${item.roomAvatar}" class="room-avatar" onerror="this.style.display='none'">`:'';
+
+                tbody.insertRow().innerHTML=`<td><span class="badge">#${idx+1}</span></td><td><div class="room-name-cell">${avatarHtml}<div>${roomLabel}</div></div></td><td>${item.users.size} kullanıcı | 个用户</td><td><b>${item.total.toFixed(2)}</b></td><td><div style="display:flex;align-items:center;gap:8px"><span style="font-size:0.85em;min-width:45px">${pct}%</span><div class="progress-bar" style="width:100px"><div class="progress-fill" style="width:${Math.min(pct,100)}%"></div></div></div></td><td>${item.visits} ziyaret | 次访问</td>`;
             });
         }
 
@@ -286,7 +342,14 @@
         }
 
         function exportExcel(){
-            const data=analysisData.map((i,idx)=>({'Sira | 序号':idx+1,'Oda_ID | 房间ID':i.roomId,'Kullanici_ID | 用户ID':i.userId,'Sure_dk | 时长(分钟)':i.total.toFixed(2),'Ziyaret | 访问次数':i.visits}));
+            const data=analysisData.map((i,idx)=>({
+                'Sira | 序号':idx+1,
+                'Oda_ID | 房间ID':i.roomId,
+                'Oda_Adi | 房间名称':i.roomName||'',
+                'Kullanici_Sayisi | 用户数':i.users.size,
+                'Sure_dk | 时长(分钟)':i.total.toFixed(2),
+                'Ziyaret | 访问次数':i.visits
+            }));
             const ws=XLSX.utils.json_to_sheet(data),wb=XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb,ws,"Sonuclar | 结果");
             XLSX.writeFile(wb,`oda_analiz_${new Date().toISOString().slice(0,10)}.xlsx`);
